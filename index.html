@@ -178,7 +178,7 @@ button{cursor:pointer}
           <label class="row small"><input type="checkbox" id="deterministic"/> 可重現模式（公開種子）</label>
           <input id="seedInput" placeholder="公開種子（例如：2025-下午場）" style="min-width:220px"/>
           <span class="badge">轉動秒數</span>
-          <input type="number" id="spinSec" min="1" max="15" step="0.5" value="3.5" style="width:90px"/>
+          <input type="number" id="spinSec" min="1" max="15" step="0.5" value="1" style="width:90px"/>
           <button class="btn-ok" id="downloadLog">下載紀錄 CSV</button>
         </div>
 
@@ -343,7 +343,7 @@ function pickPrize(){
 /* ===== 動畫：每次從 0 開始，停在整格 ===== */
 let spinning = false;
 function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
-async function spinToLabel(targetName, sec=3.5){
+async function spinToLabel(targetName, sec=1){
   if(spinning) return;
   spinning = true;
 
@@ -417,7 +417,7 @@ document.getElementById('spinBtn').addEventListener('click', async ()=>{
   document.getElementById('centerText').textContent = '抽獎中…';
   cancelConfetti();
 
-  const sec = Math.max(1, Number(document.getElementById('spinSec').value)||3.5);
+  const sec = Math.max(1, Number(document.getElementById('spinSec').value)||1);
   await spinToLabel(pick.p.name, sec);
 
   document.getElementById('centerText').textContent = `🎉 ${pick.p.name} 🎉`;
@@ -555,4 +555,5 @@ init();
 </script>
 </body>
 </html>
+
 
