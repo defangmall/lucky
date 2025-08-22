@@ -62,7 +62,7 @@ html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 0%, #5a0
   width:min(86%, 900px); padding:18px 26px; border-radius:18px;
   background:rgba(255,255,255,.97); border:5px solid var(--gold); color:#8a1c00;
   font-weight:900; letter-spacing:.5px; box-shadow:0 14px 36px rgba(0,0,0,.45);
-  font-size:clamp(34px, 6.6vw, 84px); text-align:center;
+  font-size:clamp(34px, 6.6vw, 84px); text-align:center;#centerText {  display: grid;  place-items: center;  line-height: 1.3;}
 }
 
 /* 按鈕 */
@@ -177,7 +177,7 @@ button{cursor:pointer}
         <!-- 目前獎項 -->
         <div>
           <table class="table" id="prizeTable">
-            <thead><tr><th>名稱</th><th class="right">權重</th><th>顏色</th><th>啟用</th></tr></thead>
+            <thead><tr><th>名稱</th><th>品號</th><th class="right">權重</th><th>顏色</th><th>啟用</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -272,35 +272,63 @@ $('#resetBtn').addEventListener('click', ()=>{
 
 /* CSV 文字 → prizes 陣列 */
 function csvTextToPrizes(text){
-  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
-  if(!lines.length) return [];
-  let rows = lines;
-  const head = lines[0].split(',').map(s=>s.trim().toLowerCase());
-  const hasHeader = head.includes('name') || head.includes('weight');
-  if(hasHeader) rows = lines.slice(1);
+  text = (text || '').replace(/\uFEFF/g,'');
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+  if (!lines.length) return [];
+
+  // 解析標頭（建議使用 name,code,weight,color,enabled）
+  const headerCells = lines[0].split(',').map(s => s.trim().toLowerCase());
+  const hasHeader = ['name','code','weight','color','enabled'].some(h => headerCells.includes(h));
+
+  const idx = (k) => {
+    const i = headerCells.indexOf(k);
+    return i >= 0 ? i : null;
+  };
+
+  const iName = hasHeader ? idx('name')   : 0;
+  const iCode = hasHeader ? idx('code')   : 1;
+  const iW    = hasHeader ? idx('weight') : 2;
+  const iC    = hasHeader ? idx('color')  : 3;
+  const iE    = hasHeader ? idx('enabled'): 4;
+
+  const rows = hasHeader ? lines.slice(1) : lines;
+
   const out = [];
   rows.forEach(line=>{
-    const [name,weight,color,enabled] = line.split(',').map(s=>s?.trim());
-    if(!name) return;
-    out.push({ name, weight: Number(weight||1)||0, color: color||null, enabled: (enabled==null||enabled==='') ? true : /^(true|1|yes|y)$/i.test(enabled), removed:false });
+    const cells = line.split(',').map(s=>s?.trim());
+    const name = (iName!=null ? cells[iName] : cells[0]) || '';
+    if (!name) return;  // name 必填
+    const code = (iCode!=null ? cells[iCode] : '') || '';
+    const weight = Number((iW!=null ? cells[iW] : cells[2]) || 1) || 0;
+    const color  = (iC!=null ? cells[iC] : cells[3]) || null;
+    const enabledRaw = (iE!=null ? cells[iE] : cells[4]);
+    const enabled = (enabledRaw==null || enabledRaw==='') ? true : /^(true|1|yes|y)$/i.test(String(enabledRaw));
+
+    out.push({ name, code, weight, color, enabled, removed:false });
   });
-  // 自動配色（紅金）
+
+  // 自動配色（紅金）— 若未填 color
   const auto = ['#FFD166','#FFE3A0'];
   out.forEach((p,i)=>{ if(!p.color) p.color = auto[i%2]; });
+
   return out;
 }
+
+
 
 /* ===== 目前獎項表 ===== */
 function renderPrizeTable(){
   const tb = $('#prizeTable tbody'); tb.innerHTML = '';
   prizes.forEach((p,i)=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input value="${p.name}" data-i="${i}" data-k="name"/></td>
-      <td class="right"><input type="number" min="0" step="0.1" value="${p.weight}" data-i="${i}" data-k="weight" style="width:100px"/></td>
-      <td><input type="color" value="${p.color||'#FFD166'}" data-i="${i}" data-k="color" style="padding:0 4px;width:70px"/></td>
-      <td><select data-i="${i}" data-k="enabled"><option value="true"${p.enabled?' selected':''}>啟用</option><option value="false"${!p.enabled?' selected':''}>停用</option></select></td>
-    `;
+tr.innerHTML = `
+  <td><input value="${p.name}" data-i="${i}" data-k="name"/></td>
+  <td><input value="${p.code||''}" data-i="${i}" data-k="code" style="width:120px"/></td>
+  <td class="right"><input type="number" min="0" step="0.1" value="${p.weight}" data-i="${i}" data-k="weight" style="width:100px"/></td>
+  <td><input type="color" value="${p.color||'#FFD166'}" data-i="${i}" data-k="color" style="padding:0 4px;width:70px"/></td>
+  <td><select data-i="${i}" data-k="enabled"><option value="true"${p.enabled?' selected':''}>啟用</option><option value="false"${!p.enabled?' selected':''}>停用</option></select></td>
+`;
+
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input,select').forEach(el=>{
@@ -418,7 +446,10 @@ document.getElementById('spinBtn').addEventListener('click', async ()=>{
   const sec = Math.max(1, Number(document.getElementById('spinSec').value)||1);
   await spinToLabel(pick.p.name, sec);
 
-  document.getElementById('centerText').textContent = `🎉 ${pick.p.name} 🎉`;
+document.getElementById('centerText').innerHTML = `
+  <div style="font-size:1.2em;font-weight:900;">🎉 ${pick.p.name} 🎉</div>
+  <div style="font-size:0.6em;margin-top:6px;color:#444;">${pick.p.code || ''}</div>
+`;
   launchConfetti();
 
   const mode = deterministic ? '可重現' : '安全亂數';
@@ -470,15 +501,17 @@ async function getGitHubFileSHA({owner, repo, path, branch, token}){
   return json.sha || null;
 }
 function buildPrizesCSV(prizesArr){
-  const header = ['name','weight','color','enabled'];
+  const header = ['name','code','weight','color','enabled'];
   const rows = prizesArr.map(p => [
     csvEscape(p.name),
+    csvEscape(p.code ?? ''),       // 新增 code
     csvEscape(p.weight ?? ''),
     csvEscape(p.color ?? ''),
     csvEscape(p.enabled ? 'true' : 'false')
   ].join(','));
   return [header.join(','), ...rows].join('\n');
 }
+
 async function pushPrizesToGitHub({owner, repo, path, branch='main', token}){
   if(!/\.csv$/i.test(path)) throw new Error('請將 Path 以 .csv 結尾');
   const contentStr = buildPrizesCSV(prizes);
