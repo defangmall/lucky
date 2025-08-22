@@ -508,19 +508,48 @@ async function pushPrizesToGitHub({owner, repo, path, branch='main', token}){
   if(!res.ok){ const txt = await res.text().catch(()=> ''); throw new Error(`推送失敗：HTTP ${res.status} ${txt.slice(0,200)}`); }
   return res.json();
 }
-async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}){
-  // 使用 Contents API 讀內容（可讀私有，公有可不帶 token）
-  const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
-  const res  = await fetch(url, { headers:{ ...(token?{Authorization:`Bearer ${token}`}:{}), Accept:'application/vnd.github+json' }, cache:'no-store' });
-  if(!res.ok){ const txt = await res.text().catch(()=> ''); throw new Error(`讀取失敗：HTTP ${res.status} ${txt.slice(0,120)}`); }
+async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}) {
+  // ✅ 正確處理路徑編碼：逐段 encode，不要把斜線編掉
+  const apiPath = String(path).split('/').map(encodeURIComponent).join('/');
+
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${apiPath}?ref=${encodeURIComponent(branch)}`;
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  // 1) 用 Contents API 讀
+  const res = await fetch(url, { headers, cache: 'no-store' });
+  if (!res.ok) {
+    const txt = await res.text().catch(()=> '');
+    throw new Error(`讀取失敗：HTTP ${res.status} ${txt.slice(0,120)}`);
+  }
   const json = await res.json();
-  if(!/\.csv$/i.test(json.name||path)){ throw new Error('遠端檔案不是 .csv'); }
-  // 內容為 base64
-  const text = decodeURIComponent(escape(atob(json.content.replace(/\n/g,'')))); // base64 -> UTF-8
-  const out = csvTextToPrizes(text);
-  if(!out.length) throw new Error('CSV 解析不到資料');
-  return out; 
+
+  // 如果檔案太大，Contents API 只會給 metadata（或標示 too_large），改走 download_url
+  // json.size 單位 byte；>1MB 就建議改用 download_url
+  const downloadUrl = json.download_url;
+  if (json.size > 1024*1024 && downloadUrl) {
+    const r2 = await fetch(downloadUrl, { cache: 'no-store' });
+    if (!r2.ok) throw new Error(`下載過大檔案失敗：HTTP ${r2.status}`);
+    const bigText = await r2.text();
+    const out = csvTextToPrizes(bigText.replace(/\uFEFF/g,''));
+    if (!out.length) throw new Error('CSV（large）解析不到資料');
+    return out;
+  }
+
+  // 2) 一般情況：內容是 base64
+  if (!/\.csv$/i.test(json.name || path)) throw new Error('遠端檔案不是 .csv');
+  const base64 = (json.content || '').replace(/\n/g,'');
+  if (!base64) throw new Error('遠端無內容（content 為空）');
+
+  // base64 -> UTF-8 文字
+  const text = decodeURIComponent(escape(atob(base64)));
+  if (/<!doctype html>|<html/i.test(text)) throw new Error('收到 HTML（多半是權限不足或路徑錯）');
+
+  const out = csvTextToPrizes(text.replace(/\uFEFF/g,''));
+  if (!out.length) throw new Error('CSV 解析不到資料');
+  return out;
 }
+
 
 /* ===== 開頁自動從 GitHub 載入（失敗就靜默略過） ===== */
 async function autoLoadFromGitHubOnOpen(){
@@ -601,6 +630,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
