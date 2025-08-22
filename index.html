@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>拉霸抽獎（對齊修正 / 不慢轉 / 穩定第二次）</title>
+<title>拉霸抽獎（CSV/貼上 + GitHub 同步，無音效版）</title>
 <style>
 :root{ --bg:#22060a; --panel:#2b0a0e; --text:#fff3e6; --muted:#ffd7b3; --gold:#ffd166; }
 *{box-sizing:border-box}
@@ -35,24 +35,29 @@ html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 0%, #5a0
   position:relative; overflow:hidden;
 }
 
-/* 轉軸：沒有間隔與內邊距，避免對齊誤差 */
+/* 轉軸：一格=視窗高度 */
 #slotReel{
   position:absolute; inset:0;
   display:flex; flex-direction:column; align-items:stretch;
   gap:0; padding:0; will-change:transform;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 .slotItem{
-  /* 高度會由 JS 設定為「等於視窗高度」，確保一格剛好滿框 */
   display:grid; place-items:center;
   font-weight:900; letter-spacing:.5px; color:#a02400;
   background:linear-gradient(#fff7eb,#fff0da);
   width:100%; border-radius:12px; border:2px solid #ffdca0;
   box-shadow:0 2px 8px rgba(0,0,0,.08);
   font-size:clamp(28px, 5.6vw, 64px); padding:10px 12px;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
-/* 結果覆蓋整個視窗 */
-#resultOverlay{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; z-index:3 }
+/* 結果覆蓋整個視窗（永遠在最上層） */
+#resultOverlay{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; z-index:6 }
 #resultOverlay .pill{
   width:min(86%, 900px); padding:18px 26px; border-radius:18px;
   background:rgba(255,255,255,.97); border:5px solid var(--gold); color:#8a1c00;
@@ -71,9 +76,9 @@ html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 0%, #5a0
 #spinBtn:active{ transform:translateY(1px) }
 
 /* 彩帶 */
-#confetti{ position:absolute; inset:0; pointer-events:none; z-index:4 }
+#confetti{ position:absolute; inset:0; pointer-events:none; z-index:5 }
 
-/* 後台抽屜（高層級＋懸浮開關） */
+/* 後台抽屜（含 GitHub 同步） */
 .drawer{ position:fixed; left:0; right:0; bottom:0; z-index:9999; background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.08)); }
 .drawer-toggle{ display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:8px 0; border:none; background:transparent; color:#ffe3bf; cursor:pointer }
 .drawer-toggle span{font-size:12px; opacity:.9}
@@ -82,7 +87,7 @@ html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 0%, #5a0
 .panel-inner{ padding:12px; display:grid; gap:12px }
 .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
 .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#4a0f16; border:1px solid #6e1620; font-size:12px; color:#ffdcb0}
-.small{font-size:12px; color:var(--muted)}
+.small{font-size:12px; color:#ffd7b3}
 input,button,textarea,select{background:#3a0d14; color:#ffe9cc; border:1px solid #6e1620; border-radius:8px; padding:8px 10px}
 textarea{min-height:76px}
 button{cursor:pointer}
@@ -138,28 +143,45 @@ button{cursor:pointer}
           <input id="eventNameInput" placeholder="輸入活動名稱" style="min-width:260px" />
           <button class="btn" id="applyTitle">套用</button>
         </div>
-        <!-- 匯入獎項 -->
+
+        <!-- 匯入獎項（CSV / 貼上） -->
         <div class="row">
           <span class="badge">匯入獎項（CSV 或貼上）</span>
           <input type="file" id="csvFile" accept=".csv" />
           <button class="btn" id="importBtn">匯入</button>
           <button class="btn-warn" id="resetBtn">重置獎項</button>
-          <span class="small">格式：<code>name,weight,color(optional),enabled(optional)</code></span>
+          <span class="small">CSV 欄位：<code>name,weight,color(optional),enabled(optional)</code></span>
         </div>
         <textarea id="pasteArea" placeholder="一等獎,1,#FFD166,true
 二等獎,2,,true
 三等獎,3,,true
 謝謝參與,6,#FFE3A0,true"></textarea>
+
+        <!-- GitHub 同步（CSV） -->
+        <div class="row">
+          <span class="badge">GitHub 同步（CSV）</span>
+          <input id="ghRepo" placeholder="owner/repo（例如：yourname/lottery-app）" style="min-width:260px"/>
+          <input id="ghBranch" placeholder="main" style="width:110px"/>
+          <input id="ghPath" placeholder="data/prizes.csv" style="min-width:200px"/>
+          <input id="ghToken" type="password" placeholder="GitHub Token（公有 repo 載入可留空，推送必填）" style="min-width:260px"/>
+        </div>
+        <div class="row">
+          <button class="btn" id="loadFromGitHub">從 GitHub 載入</button>
+          <button class="btn-primary" id="pushGitHub">推送到 GitHub</button>
+          <span class="small">從 GitHub 讀：公有 repo 可不填 Token；私有 repo 需 Token。推送：需 Token 且具 Contents: Read &amp; write。</span>
+        </div>
+
         <!-- 設定 -->
         <div class="row">
           <label class="badge">抽獎模式</label>
           <label class="row small"><input type="checkbox" id="allowRepeat"/> 允許同一獎項重複開出</label>
-          <label class="row small"><input type="checkbox" id="deterministic"/> 可重現模式</label>
-          <input id="seedInput" placeholder="（例如：2025-下午場）" style="min-width:220px"/>
+          <label class="row small"><input type="checkbox" id="deterministic"/> 可重現模式（公開種子）</label>
+          <input id="seedInput" placeholder="公開種子（例如：2025-下午場）" style="min-width:220px"/>
           <span class="badge">轉動秒數</span>
-          <input type="number" id="spinSec" min="1" max="15" step="0.5" value="1" style="width:90px"/>
+          <input type="number" id="spinSec" min="1" max="15" step="0.5" value="3.5" style="width:90px"/>
           <button class="btn-ok" id="downloadLog">下載紀錄 CSV</button>
         </div>
+
         <!-- 目前獎項 -->
         <div>
           <table class="table" id="prizeTable">
@@ -167,6 +189,7 @@ button{cursor:pointer}
             <tbody></tbody>
           </table>
         </div>
+
         <!-- 紀錄 -->
         <div>
           <h4 style="margin:8px 0 6px">抽獎紀錄</h4>
@@ -175,6 +198,7 @@ button{cursor:pointer}
             <tbody></tbody>
           </table>
         </div>
+
       </div>
     </div>
   </div>
@@ -186,10 +210,10 @@ button{cursor:pointer}
 </div>
 
 <script>
-/* ===== 小工具 ===== */
+/* ===== 工具 ===== */
 const $ = s => document.querySelector(s);
 const nowISO = () => new Date().toISOString();
-function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1500); }
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
 function csvEscape(s){ if(s==null) return ""; s=String(s); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }
 function download(filename, text){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})); a.download=filename; a.click(); URL.revokeObjectURL(a.href); }
 function mulberry32(seed){ let t = seed>>>0; return function(){ t += 0x6D2B79F5; let r = Math.imul(t ^ t>>>15, 1 | t); r ^= r + Math.imul(r ^ r>>>7, 61 | r); return ((r ^ r>>>14)>>>0)/4294967296; } }
@@ -220,58 +244,64 @@ $('#applyTitle').addEventListener('click', ()=>{
   if(t){ $('#eventTitle').textContent = t; toast('活動名稱已更新'); }
 });
 
-/* ===== 轉軸內容：確保「一格 = 視窗高度」 ===== */
+/* ===== 轉軸內容：一格 = 視窗高度 ===== */
 const windowEl = $('#slotWindow');
 const reel = $('#slotReel');
 function buildReel(){
   reel.innerHTML = '';
   const active = prizes.filter(p=>p.enabled && !p.removed && p.weight>=0);
-  const pool = [...active, ...active, ...active, ...active]; // 多幾輪更順暢
-  const itemH = windowEl.clientHeight; // 直接用視窗高度
+  const pool = [...active, ...active, ...active, ...active];
+  const itemH = windowEl.clientHeight; // 一格 = 視窗高
   pool.forEach(p=>{
     const div = document.createElement('div');
     div.className = 'slotItem';
     div.style.borderColor = p.color || '#FFD166';
-    div.style.height = itemH + 'px';      // ★ 高度 = 視窗高度
+    div.style.height = itemH + 'px';
     div.textContent = p.name;
     reel.appendChild(div);
   });
   reel.style.transform = `translateY(0px)`;
 }
-function relayout(){ buildReel(); }
-window.addEventListener('resize', relayout);
+window.addEventListener('resize', buildReel);
 
-/* ===== 匯入獎項 ===== */
+/* ===== 匯入（CSV / 貼上） ===== */
 $('#importBtn').addEventListener('click', async ()=>{
   let text = '';
   const f = $('#csvFile').files[0];
   if(f){ text = await f.text(); } else { text = $('#pasteArea').value.trim(); }
   if(!text){ toast('請先選擇 CSV 或貼上文字'); return; }
-  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
-  let rows = lines;
-  const head = lines[0].split(',').map(s=>s.trim().toLowerCase());
-  const hasHeader = head.includes('name') || head.includes('weight');
-  if(hasHeader) rows = lines.slice(1);
-
-  const out = [];
-  rows.forEach((line)=>{
-    const [name,weight,color,enabled] = line.split(',').map(s=>s?.trim());
-    if(!name) return;
-    out.push({ name, weight: Number(weight||1)||0, color: color||null, enabled: (enabled==null||enabled==='') ? true : /^(true|1|yes|y)$/i.test(enabled), removed:false });
-  });
-  const auto = ['#FFD166','#FFE3A0'];
-  out.forEach((p,i)=>{ if(!p.color) p.color = auto[i%2]; });
-
-  prizes = out.length? out : prizes;
-  buildReel(); renderPrizeTable();
-  $('#centerText').textContent = '名單已匯入';
-  toast(`已匯入 ${out.length} 個獎項`);
+  text = text.replace(/\uFEFF/g,'');
+  const out = csvTextToPrizes(text);
+  if(!out.length){ toast('沒有解析到資料，請確認欄位格式'); return; }
+  prizes = out; buildReel(); renderPrizeTable();
+  $('#centerText').textContent = '名單已匯入'; toast(`已匯入 ${out.length} 個獎項`);
 });
+
 $('#resetBtn').addEventListener('click', ()=>{
   prizes.forEach(p=>{ p.removed=false; p.enabled=true; });
   buildReel(); renderPrizeTable();
   $('#centerText').textContent = '已重置';
 });
+
+/* CSV 文字 → prizes 陣列 */
+function csvTextToPrizes(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
+  if(!lines.length) return [];
+  let rows = lines;
+  const head = lines[0].split(',').map(s=>s.trim().toLowerCase());
+  const hasHeader = head.includes('name') || head.includes('weight');
+  if(hasHeader) rows = lines.slice(1);
+  const out = [];
+  rows.forEach(line=>{
+    const [name,weight,color,enabled] = line.split(',').map(s=>s?.trim());
+    if(!name) return;
+    out.push({ name, weight: Number(weight||1)||0, color: color||null, enabled: (enabled==null||enabled==='') ? true : /^(true|1|yes|y)$/i.test(enabled), removed:false });
+  });
+  // 自動配色（紅金）
+  const auto = ['#FFD166','#FFE3A0'];
+  out.forEach((p,i)=>{ if(!p.color) p.color = auto[i%2]; });
+  return out;
+}
 
 /* ===== 目前獎項表 ===== */
 function renderPrizeTable(){
@@ -310,31 +340,30 @@ function pickPrize(){
   return pool[pool.length-1];
 }
 
-/* ===== 動畫（回復舊版邏輯：每次從 0 開始，確保次次可見） ===== */
+/* ===== 動畫：每次從 0 開始，停在整格 ===== */
 let spinning = false;
 function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
 async function spinToLabel(targetName, sec=3.5){
   if(spinning) return;
   spinning = true;
 
-  const itemH = windowEl.clientHeight;         // ★ 目標格高 = 視窗高
+  const itemH = windowEl.clientHeight;
   const totalItems = reel.children.length;
 
-  // 找 reel 中的第一個同名索引
+  // 找第一個同名索引
   let targetIndex = -1;
   for(let i=0;i<totalItems;i++){
     if(reel.children[i].textContent === targetName){ targetIndex = i; break; }
   }
   if(targetIndex<0) targetIndex = totalItems-1;
 
-  const cycles = 10 + Math.floor(Math.random()*5); // 多幾圈
-  const startY = 0;                      // ★ 每次從 0 開始
+  const cycles = 10 + Math.floor(Math.random()*5);
+  const startY = 0;
   const endY   = -(cycles*itemH + targetIndex*itemH);
 
   const start = performance.now(), dur = sec*1000;
   function frame(t){
     const k = Math.min(1, (t-start)/dur);
-    // 加速→恆速→減速
     const eased = (k<0.2)? (k/0.2)*0.3 : (k>0.8)? 0.3 + (k-0.8)/0.2*0.7 : 0.3 + (k-0.2)/0.6*0.4;
     const y = startY + (endY-startY)*easeOutCubic(eased);
     reel.style.transform = `translateY(${y}px)`;
@@ -343,14 +372,13 @@ async function spinToLabel(targetName, sec=3.5){
   return new Promise(res=>{
     requestAnimationFrame(frame);
     setTimeout(()=>{
-      // ★ 停下後把位置 snap 到整數像素，並保證下一次從 0 開始（避免第二次不顯示）
-      reel.style.transform = `translateY(${Math.round(endY)}px)`;
+      reel.style.transform = `translateY(${Math.round(endY)}px)`; // snap
       res();
     }, dur+20);
   });
 }
 
-/* ===== 彩帶 ===== */
+/* ===== 彩帶（簡易） ===== */
 const confetti = document.getElementById('confetti'); const cctx = confetti.getContext('2d');
 function resizeConfetti(){ const rect = document.getElementById('machine').getBoundingClientRect(); confetti.width = rect.width; confetti.height = rect.height; }
 window.addEventListener('resize', resizeConfetti); resizeConfetti();
@@ -378,7 +406,7 @@ function launchConfetti(durationMs=2200){
 }
 function cancelConfetti(){ if(confettiAnim){ cancelAnimationFrame(confettiAnim); confettiAnim=null; } cctx.clearRect(0,0,confetti.width,confetti.height); }
 
-/* ===== 主流程 ===== */
+/* ===== 抽獎流程 ===== */
 document.getElementById('spinBtn').addEventListener('click', async ()=>{
   if(spinning) return;
   if(document.getElementById('deterministic').checked && !deterministic){ await setupDeterministic(); }
@@ -395,26 +423,31 @@ document.getElementById('spinBtn').addEventListener('click', async ()=>{
   document.getElementById('centerText').textContent = `🎉 ${pick.p.name} 🎉`;
   launchConfetti();
 
-  // 紀錄
   const mode = deterministic ? '可重現' : '安全亂數';
   logs.push({ts:nowISO(), name:pick.p.name, weight:pick.p.weight, mode, seed:seedNote});
   appendLogRow(logs[logs.length-1]);
 
-  // 不重複時移除該獎
   if(!document.getElementById('allowRepeat').checked){
     prizes[pick.i].removed = true; prizes[pick.i].enabled = false;
   }
-  // ★ 每次結束都重建轉軸並把位置歸零，避免下一次文字消失或對不齊
   buildReel(); renderPrizeTable();
 });
 
+/* ===== 紀錄表 ===== */
 function appendLogRow(r){
   const tr = document.createElement('tr');
   tr.innerHTML = `<td>${r.ts}</td><td>${csvEscape(r.name)}</td><td>${r.weight}</td><td>${r.mode}${r.seed?` / ${csvEscape(r.seed)}`:''}</td>`;
   document.querySelector('#logTable tbody').prepend(tr);
 }
 
-/* ===== 其它控制 ===== */
+document.getElementById('downloadLog').addEventListener('click', ()=>{
+  if(logs.length===0) return toast('還沒有紀錄');
+  const header = ['timestamp','prize','weight','mode','seed'];
+  const rows = logs.map(x => [x.ts,x.name,x.weight,x.mode,x.seed].map(csvEscape).join(','));
+  download(`slot_logs_${Date.now()}.csv`, [header.join(',')].concat(rows).join('\n'));
+});
+
+/* ===== 可重現亂數 ===== */
 document.getElementById('deterministic').addEventListener('change', async ()=>{
   if(document.getElementById('deterministic').checked){ await setupDeterministic(); }
   else { deterministic=false; prng=null; seedNote=''; toast('已切換到安全亂數');}
@@ -427,11 +460,88 @@ async function setupDeterministic(){
   prng = mulberry32(seed);
   toast('可重現模式啟用');
 }
-document.getElementById('downloadLog').addEventListener('click', ()=>{
-  if(logs.length===0) return toast('還沒有紀錄');
-  const header = ['timestamp','prize','weight','mode','seed'];
-  const rows = logs.map(x => [x.ts,x.name,x.weight,x.mode,x.seed].map(csvEscape).join(','));
-  download(`slot_logs_${Date.now()}.csv`, [header.join(',')].concat(rows).join('\n'));
+
+/* ===== GitHub 同步（CSV） ===== */
+function toBase64UTF8(str){ return btoa(unescape(encodeURIComponent(str))); }
+async function getGitHubFileSHA({owner, repo, path, branch, token}){
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+  const res = await fetch(url, { headers: { ...(token?{Authorization:`Bearer ${token}`}:{}), Accept:'application/vnd.github+json' } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`get SHA 失敗：HTTP ${res.status}`);
+  const json = await res.json();
+  return json.sha || null;
+}
+function buildPrizesCSV(prizesArr){
+  const header = ['name','weight','color','enabled'];
+  const rows = prizesArr.map(p => [
+    csvEscape(p.name),
+    csvEscape(p.weight ?? ''),
+    csvEscape(p.color ?? ''),
+    csvEscape(p.enabled ? 'true' : 'false')
+  ].join(','));
+  return [header.join(','), ...rows].join('\n');
+}
+async function pushPrizesToGitHub({owner, repo, path, branch='main', token}){
+  if(!/\.csv$/i.test(path)) throw new Error('請將 Path 以 .csv 結尾');
+  const contentStr = buildPrizesCSV(prizes);
+  const contentB64 = toBase64UTF8(contentStr);
+  const sha = await getGitHubFileSHA({owner, repo, path, branch, token}).catch(()=>null);
+  const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  const body = { message: `chore: update prizes.csv (${new Date().toISOString()})`, content: contentB64, branch };
+  if (sha) body.sha = sha;
+  const res = await fetch(url, {
+    method:'PUT',
+    headers:{ Authorization:`Bearer ${token}`, Accept:'application/vnd.github+json', 'Content-Type':'application/json' },
+    body: JSON.stringify(body)
+  });
+  if(!res.ok){ const txt = await res.text().catch(()=> ''); throw new Error(`推送失敗：HTTP ${res.status} ${txt.slice(0,200)}`); }
+  return res.json();
+}
+async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}){
+  // 使用 Contents API 讀內容（可讀私有，公有可不帶 token）
+  const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+  const res  = await fetch(url, { headers:{ ...(token?{Authorization:`Bearer ${token}`}:{}), Accept:'application/vnd.github+json' }, cache:'no-store' });
+  if(!res.ok){ const txt = await res.text().catch(()=> ''); throw new Error(`讀取失敗：HTTP ${res.status} ${txt.slice(0,120)}`); }
+  const json = await res.json();
+  if(!/\.csv$/i.test(json.name||path)){ throw new Error('遠端檔案不是 .csv'); }
+  // 內容為 base64
+  const text = decodeURIComponent(escape(atob(json.content.replace(/\n/g,'')))); // base64 -> UTF-8
+  const out = csvTextToPrizes(text);
+  if(!out.length) throw new Error('CSV 解析不到資料');
+  return out;
+}
+
+/* 綁定 GitHub 按鈕 */
+document.getElementById('pushGitHub')?.addEventListener('click', async ()=>{
+  const repoFull = document.getElementById('ghRepo')?.value.trim();
+  const branch   = document.getElementById('ghBranch')?.value.trim() || 'main';
+  const path     = document.getElementById('ghPath')?.value.trim() || 'data/prizes.csv';
+  const token    = document.getElementById('ghToken')?.value.trim();
+  if(!repoFull || !token){ toast('推送需要 owner/repo 與 Token'); return; }
+  const [owner, repo] = repoFull.split('/');
+  if(!owner || !repo){ toast('owner/repo 格式不正確'); return; }
+  try{
+    toast('推送中…');
+    await pushPrizesToGitHub({owner, repo, path, branch, token});
+    toast('已推送到 GitHub ✅');
+  }catch(e){ console.error(e); toast(String(e.message||e)); }
+});
+
+document.getElementById('loadFromGitHub')?.addEventListener('click', async ()=>{
+  const repoFull = document.getElementById('ghRepo')?.value.trim();
+  const branch   = document.getElementById('ghBranch')?.value.trim() || 'main';
+  const path     = document.getElementById('ghPath')?.value.trim() || 'data/prizes.csv';
+  const token    = document.getElementById('ghToken')?.value.trim();
+  if(!repoFull){ toast('請填 owner/repo'); return; }
+  const [owner, repo] = repoFull.split('/');
+  if(!owner || !repo){ toast('owner/repo 格式不正確'); return; }
+  try{
+    toast('讀取中…');
+    const out = await loadPrizesFromGitHub({owner, repo, path, branch, token});
+    prizes = out; buildReel(); renderPrizeTable();
+    $('#centerText').textContent = '已從 GitHub 載入';
+    toast(`已載入 ${out.length} 個獎項`);
+  }catch(e){ console.error(e); toast(String(e.message||e)); }
 });
 
 /* ===== 初始化 ===== */
