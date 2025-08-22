@@ -160,7 +160,7 @@ button{cursor:pointer}
         <!-- GitHub 同步（CSV） -->
         <div class="row">
           <span class="badge">GitHub 同步（CSV）</span>
-          <input id="ghRepo" placeholder="defangmall/lucky" style="min-width:260px"/>
+          <input id="ghRepo" value="defangmall/lucky" style="min-width:260px"/>
           <input id="ghBranch" placeholder="main" style="width:110px"/>
           <input id="ghPath" placeholder="data/prizes.csv" style="min-width:200px"/>
           <input id="ghToken" type="password" placeholder="GitHub Token（公有 repo 載入可留空，推送必填）" style="min-width:260px"/>
@@ -329,6 +329,17 @@ function renderPrizeTable(){
   });
 }
 
+/* ===== 預設 GitHub 來源（公有 repo 可不填 token）===== */
+const GH_DEFAULTS = {
+  repo:  "defangall.lucky",   // ← 改成你的 owner/repo
+  branch:"main",                    // ← 預設分支
+  path:  "data/prizes.csv",         // ← CSV 路徑
+  token: ""                         // 私有 repo 才需要；前端不建議硬編
+};
+
+
+
+  
 /* ===== RNG / 權重抽選 ===== */
 function rng(){ return deterministic && prng ? prng() : crypto.getRandomValues(new Uint32Array(1))[0]/2**32; }
 function pickPrize(){
@@ -511,6 +522,41 @@ async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}){
   return out;
 }
 
+/* ===== 開頁自動從 GitHub 載入（失敗就靜默略過） ===== */
+async function autoLoadFromGitHubOnOpen(){
+  // 以 GH_DEFAULTS 優先，若沒填則讀 UI 欄位（可保留你原本表單的靈活性）
+  const sourceRepo   = GH_DEFAULTS.repo   || document.getElementById('ghRepo')?.value.trim();
+  const sourceBranch = GH_DEFAULTS.branch || document.getElementById('ghBranch')?.value.trim() || 'main';
+  const sourcePath   = GH_DEFAULTS.path   || document.getElementById('ghPath')?.value.trim()   || 'data/prizes.csv';
+  const sourceToken  = GH_DEFAULTS.token  || document.getElementById('ghToken')?.value.trim()  || "";
+
+  if(!sourceRepo) return; // 沒設定就不自動載
+  const [owner, repo] = String(sourceRepo).split('/');
+  if(!owner || !repo) return;
+
+  try{
+    const out = await loadPrizesFromGitHub({ owner, repo, path: sourcePath, branch: sourceBranch, token: sourceToken });
+    if(Array.isArray(out) && out.length){
+      prizes = out;
+      buildReel();
+      renderPrizeTable();
+      // 預填後台欄位（可選；若你已在 HTML 寫死 value 就不需要）
+if(document.getElementById('ghRepo'))   document.getElementById('ghRepo').value   = GH_DEFAULTS.repo;
+if(document.getElementById('ghBranch')) document.getElementById('ghBranch').value = GH_DEFAULTS.branch || 'main';
+if(document.getElementById('ghPath'))   document.getElementById('ghPath').value   = GH_DEFAULTS.path   || 'data/prizes.csv';
+
+// 🚀 啟動時自動從 GitHub 載入（公有 repo 不需 token）
+autoLoadFromGitHubOnOpen();
+
+      document.getElementById('centerText').textContent = '已自動載入 GitHub 獎項';
+      toast(`已載入 ${out.length} 個獎項（GitHub）`);
+    }
+  }catch(err){
+    console.warn('Auto GitHub load failed:', err); // 失敗就用預設/本地，不打擾台上流程
+  }
+}
+
+  
 /* 綁定 GitHub 按鈕 */
 document.getElementById('pushGitHub')?.addEventListener('click', async ()=>{
   const repoFull = document.getElementById('ghRepo')?.value.trim();
@@ -555,5 +601,6 @@ init();
 </script>
 </body>
 </html>
+
 
 
