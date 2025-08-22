@@ -508,15 +508,14 @@ async function pushPrizesToGitHub({owner, repo, path, branch='main', token}){
   if(!res.ok){ const txt = await res.text().catch(()=> ''); throw new Error(`推送失敗：HTTP ${res.status} ${txt.slice(0,200)}`); }
   return res.json();
 }
+  
 async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}) {
-  // ✅ 正確處理路徑編碼：逐段 encode，不要把斜線編掉
+  // 正確處理路徑編碼：逐段 encode，不要把斜線編掉
   const apiPath = String(path).split('/').map(encodeURIComponent).join('/');
-
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${apiPath}?ref=${encodeURIComponent(branch)}`;
   const headers = { Accept: 'application/vnd.github+json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  // 1) 用 Contents API 讀
   const res = await fetch(url, { headers, cache: 'no-store' });
   if (!res.ok) {
     const txt = await res.text().catch(()=> '');
@@ -524,11 +523,9 @@ async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}) {
   }
   const json = await res.json();
 
-  // 如果檔案太大，Contents API 只會給 metadata（或標示 too_large），改走 download_url
-  // json.size 單位 byte；>1MB 就建議改用 download_url
-  const downloadUrl = json.download_url;
-  if (json.size > 1024*1024 && downloadUrl) {
-    const r2 = await fetch(downloadUrl, { cache: 'no-store' });
+  // 大檔（>1MB）改抓 download_url
+  if (json.size > 1024*1024 && json.download_url) {
+    const r2 = await fetch(json.download_url, { cache:'no-store' });
     if (!r2.ok) throw new Error(`下載過大檔案失敗：HTTP ${r2.status}`);
     const bigText = await r2.text();
     const out = csvTextToPrizes(bigText.replace(/\uFEFF/g,''));
@@ -536,12 +533,11 @@ async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}) {
     return out;
   }
 
-  // 2) 一般情況：內容是 base64
   if (!/\.csv$/i.test(json.name || path)) throw new Error('遠端檔案不是 .csv');
   const base64 = (json.content || '').replace(/\n/g,'');
   if (!base64) throw new Error('遠端無內容（content 為空）');
 
-  // base64 -> UTF-8 文字
+  // base64 -> UTF-8
   const text = decodeURIComponent(escape(atob(base64)));
   if (/<!doctype html>|<html/i.test(text)) throw new Error('收到 HTML（多半是權限不足或路徑錯）');
 
@@ -551,39 +547,50 @@ async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}) {
 }
 
 
+
 /* ===== 開頁自動從 GitHub 載入（失敗就靜默略過） ===== */
 async function autoLoadFromGitHubOnOpen(){
-  // 以 GH_DEFAULTS 優先，若沒填則讀 UI 欄位（可保留你原本表單的靈活性）
-  const sourceRepo   = GH_DEFAULTS.repo   || document.getElementById('ghRepo')?.value.trim() || 'defangmall/lucky';
-  const sourceBranch = GH_DEFAULTS.branch || document.getElementById('ghBranch')?.value.trim() || 'main';
-  const sourcePath   = GH_DEFAULTS.path   || document.getElementById('ghPath')?.value.trim()   || 'data/prizes.csv';
-  const sourceToken  = GH_DEFAULTS.token  || document.getElementById('ghToken')?.value.trim()  || "";
+  const sourceRepo   = GH_DEFAULTS.repo;
+  const sourceBranch = GH_DEFAULTS.branch || 'main';
+  const sourcePath   = GH_DEFAULTS.path   || 'data/prizes.csv';
+  const sourceToken  = GH_DEFAULTS.token  || "";
 
-  if(!sourceRepo) return; // 沒設定就不自動載
+  if(!sourceRepo) return;
   const [owner, repo] = String(sourceRepo).split('/');
   if(!owner || !repo) return;
 
   try{
     const out = await loadPrizesFromGitHub({ owner, repo, path: sourcePath, branch: sourceBranch, token: sourceToken });
     if(Array.isArray(out) && out.length){
-      prizes = out;
-      buildReel();
-      renderPrizeTable();
-      // 預填後台欄位（可選；若你已在 HTML 寫死 value 就不需要）
-if(document.getElementById('ghRepo'))   document.getElementById('ghRepo').value   = GH_DEFAULTS.repo || 'defangmall/lucky';
-if(document.getElementById('ghBranch')) document.getElementById('ghBranch').value = GH_DEFAULTS.branch || 'main';
-if(document.getElementById('ghPath'))   document.getElementById('ghPath').value   = GH_DEFAULTS.path   || 'data/prizes.csv';
-
-// 🚀 啟動時自動從 GitHub 載入（公有 repo 不需 token）
-autoLoadFromGitHubOnOpen();
-
+      prizes = out; buildReel(); renderPrizeTable();
       document.getElementById('centerText').textContent = '已自動載入 GitHub 獎項';
       toast(`已載入 ${out.length} 個獎項（GitHub）`);
+      return;
     }
   }catch(err){
-    console.warn('Auto GitHub load failed:', err); // 失敗就用預設/本地，不打擾台上流程
+    console.warn('Contents API 失敗：', err?.message || err);
+    // 公開 repo 備援：raw
+    if (!sourceToken) {
+      try{
+        const rawPath = sourcePath.split('/').map(encodeURIComponent).join('/');
+        const rawUrl  = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(sourceBranch)}/${rawPath}`;
+        const r = await fetch(rawUrl, { cache:'no-store' });
+        if (r.ok) {
+          const text = await r.text();
+          const out2 = csvTextToPrizes(text.replace(/\uFEFF/g,''));
+          if (out2.length) {
+            prizes = out2; buildReel(); renderPrizeTable();
+            document.getElementById('centerText').textContent = '已自動載入 GitHub（raw 備援）';
+            toast(`已載入 ${out2.length} 個獎項（raw.githubusercontent.com）`);
+          }
+        }
+      }catch(e2){
+        console.warn('raw 備援錯誤：', e2?.message || e2);
+      }
+    }
   }
 }
+
 
   
 /* 綁定 GitHub 按鈕 */
@@ -625,11 +632,13 @@ function init(){
   document.getElementById('deterministic').checked = false;
   document.getElementById('seedInput').value = '';
   buildReel(); renderPrizeTable();
+  autoLoadFromGitHubOnOpen();
 }
 init();
 </script>
 </body>
 </html>
+
 
 
 
