@@ -446,10 +446,35 @@ document.getElementById('spinBtn').addEventListener('click', async ()=>{
   const sec = Math.max(1, Number(document.getElementById('spinSec').value)||1);
   await spinToLabel(pick.p.name, sec);
 
-document.getElementById('centerText').innerHTML = `
-  <div style="font-size:1.2em;font-weight:900;">🎉 ${pick.p.name} 🎉</div>
-  <div style="font-size:0.6em;margin-top:6px;color:#444;">${pick.p.code || ''}</div>
+const resultEl = document.getElementById('centerText');
+
+// 建立兩行內容
+resultEl.innerHTML = `
+  <div id="resultName">🎉 ${pick.p.name} 🎉</div>
+  <div id="resultCode">${pick.p.code || ''}</div>
 `;
+
+// 動態字體大小：字越多 → 字越小
+const nameEl = document.getElementById('resultName');
+const baseSize = 64; // 基準字體大小(px)
+const minSize  = 28; // 最小字體(px)
+const maxLen   = 12; // 超過這個長度開始縮小
+
+let len = pick.p.name.length;
+let size = baseSize;
+if (len > maxLen) {
+  size = Math.max(minSize, baseSize - (len - maxLen) * 3);
+}
+nameEl.style.fontSize = size + "px";
+nameEl.style.fontWeight = "900";
+nameEl.style.textAlign = "center";
+
+// 品號小字
+const codeEl = document.getElementById('resultCode');
+codeEl.style.fontSize = "20px";
+codeEl.style.marginTop = "6px";
+codeEl.style.color = "#6b3a00";
+
   launchConfetti();
 
   const mode = deterministic ? '可重現' : '安全亂數';
