@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DISC 四型檢測（28 題｜最像/最不像）</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<style>
+  :root{
+    --bg:#f8fafc; --card:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --bad:#fee2e2; --bad-border:#ef4444;
+    --most:#e6fffb; --most-border:#06b6d4;
+    --least:#fff7ed; --least-border:#f59e0b;
+  }
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,"Noto Sans TC","PingFang TC",sans-serif;}
+  header{padding:24px 16px; text-align:center;}
+  header h1{margin:0 0 8px;font-size:28px;}
+  header p{margin:0;color:var(--muted);}
+  .container{max-width:1100px;margin:0 auto;padding:0 16px 64px;}
+  .panel{background:var(--card);border-radius:16px;box-shadow:0 8px 24px rgba(2,6,23,.06);padding:16px;}
+  .controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0 16px}
+  button{border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
+  .primary{background:#111827;color:#fff}
+  .ghost{background:#e5e7eb}
+  .outline{background:#fff;border:1px solid #e5e7eb}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  .q{border:1px solid #e5e7eb;border-radius:16px;padding:12px 12px}
+  .q.missing{border-color:var(--bad-border);box-shadow:0 0 0 3px rgba(239,68,68,.15)}
+  .qhead{display:flex;gap:10px;align-items:baseline;margin-bottom:8px}
+  .qidx{font-weight:800;font-size:14px;color:var(--muted)}
+  .qtext{font-weight:650}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .group-title{font-size:12px;color:#334155;margin:2px 0 6px}
+  .col{border:1px dashed #e2e8f0;border-radius:12px;padding:8px}
+  .opts{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:6px}
+  .opt{
+    position:relative;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;cursor:pointer;
+    user-select:none;display:flex;gap:8px;align-items:flex-start
+  }
+  .opt input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .opt .badge{font-weight:800;font-size:12px;opacity:.7}
+  .opt .txt{font-size:14px;line-height:1.3}
+  .col.most .opt.selected{background:var(--most);border-color:var(--most-border)}
+  .col.least .opt.selected{background:var(--least);border-color:var(--least-border)}
+  .opt.disabled{opacity:.45;pointer-events:none}
+  .notice{font-size:12px;color:var(--muted);margin-top:8px}
+
+  .charts{display:grid;grid-template-columns:1fr;gap:16px;margin-top:20px}
+  @media (min-width:980px){ .charts{grid-template-columns:1fr 1fr 1fr} }
+  .chartcard{background:var(--card);border-radius:16px;box-shadow:0 8px 24px rgba(2,6,23,.06);padding:12px}
+  .chartcard h3{margin:6px 0 8px;font-size:16px}
+  .table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  .table th,.table td{border-top:1px solid #e5e7eb;padding:6px 8px;text-align:center}
+  .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .pill{padding:4px 8px;border-radius:999px;font-size:12px;border:1px solid #e5e7eb;background:#f8fafc}
+  .pill strong{margin-left:4px}
+  .hidden{display:none !important}
+  footer{margin-top:18px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>DISC 四型檢測</h1>
+  <p>每題請各選「最像」與「最不像」各 1 個選項（A/B/C/D）。完成後按下方按鈕計算。</p>
+</header>
+
+<div class="container">
+  <div class="panel">
+    <div class="controls">
+      <button id="calc" class="primary">計算結果</button>
+      <button id="scrollFirstMissing" class="outline">跳到第一題未完成</button>
+      <button id="reset" class="ghost">全部清除</button>
+      <span id="progress" class="notice">進度：0 / 28 題（最像 & 最不像都選）</span>
+    </div>
+    <div id="questions" class="grid" aria-live="polite"></div>
+    <div class="notice">提示：同一題的「最像」與「最不像」不能選同一個選項；若有未答題，按「計算結果」會把該題整卡片標紅框。</div>
+  </div>
+
+  <!-- 結果區塊放在最底部，初始隱藏 -->
+  <div id="results" class="charts hidden">
+    <div class="chartcard">
+      <h3>最像（M）分數曲線（1～7）</h3>
+      <canvas id="chartMost" height="220"></canvas>
+      <div class="kpi" id="mostKpi"></div>
+      <table class="table" id="mostTable"></table>
+    </div>
+    <div class="chartcard">
+      <h3>最不像（L）分數曲線（1～7）</h3>
+      <canvas id="chartLeast" height="220"></canvas>
+      <div class="kpi" id="leastKpi"></div>
+      <table class="table" id="leastTable"></table>
+    </div>
+    <div class="chartcard">
+      <h3>相減（M−L）分數曲線（1～7）</h3>
+      <canvas id="chartDiff" height="220"></canvas>
+      <div class="kpi" id="diffKpi"></div>
+      <table class="table" id="diffTable"></table>
+    </div>
+  </div>
+
+  <footer>以上為 28 題雙選測驗；結果區塊於完成計算後顯示。</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+/* ===== 28 題題庫（沿用上一版） ===== */
+const questions = [
+  { t:"1. 當你和朋友一起用餐時，在選擇用餐或吃什麼時，你常是：",
+    a:"決定者：意見不同時，通常都是決定者。", b:"氣氛製造者：吃什麼，很能帶動情緒氣氛。", c:"附和者：隨便，沒意見。", d:"意見提供者：常否定別人的提議，自己又沒意見，也不做任何決定。"},
+  { t:"2. 當你買衣服時，你是：",
+    a:"不易受售貨員影響，心中自有定見。", b:"售貨員的親切及好的感受，常會促進你的購買。", c:"找熟悉的店購買。", d:"品質與價錢是否成比例，價錢是否合理？"},
+  { t:"3. 你的消費習慣是：",
+    a:"找到要買的東西，付錢走人。", b:"很隨意地逛，不特定買什麼。", c:"有一定的消費習慣，不太喜歡變化。", d:"較注意東西好不好，較有成本觀念。"},
+  { t:"4. 朋友形容你，他們會說：",
+    a:"蠻「鴨霸」的。", b:"熱情洋溢。", c:"溫和斯文。", d:"要求完美。"},
+  { t:"5. 你自認哪一種形容最能表現你的特色：",
+    a:"果敢，能接受挑戰。", b:"生動活潑，不拘小節。", c:"愛傾聽，喜歡穩定。", d:"處世謹慎小心，重數據分析。"},
+  { t:"6. 你覺得做事的重點應該是：",
+    a:"what，做什麼？重結果。", b:"who，誰來做？重感受（過程）。", c:"why，為何做？重品質。", d:"how，怎麼做？重執行。"},
+  { t:"7. 與同事有意見衝突（或不同）時，你是：",
+    a:"說服對方聽從自己的意見。", b:"問其他同事或上司意見，尋求支持。", c:"退讓，以和為貴。", d:"與衝突者協調，找尋最好的意見。"},
+  { t:"8. 什麼樣的工作環境最能鼓舞你：",
+    a:"能讓你決定事情，具領導地位的。", b:"同事相處愉快，處處受歡迎。", c:"穩定中求發展。", d:"講品質、重效率的工作。"},
+  { t:"9. 以下的溝通方式，哪一項最符合你：",
+    a:"直接了當，較權威式。", b:"表情豐富，肢體語言多。", c:"先聽聽別人意見，而後溫和地表達自己的意見。", d:"理多於情，愛分析，較冷靜。"},
+  { t:"10. 在會議或公司決議提案時，你扮演的角色：",
+    a:"據理力爭者。", b:"協調者。", c:"贊同多數者。", d:"分析所有提案以供參考者。"},
+  { t:"11.",
+    a:"我做事一向具體、短期能達標；決定快速，立即得到結果。", b:"我喜歡跟人交往，各式各樣的人都行，甚至陌生人也行。", c:"我不喜歡強出頭，寧可當後補。", d:"我是自我約束、守紀律的人，凡事依既定目標行事。"},
+  { t:"12.",
+    a:"我喜歡有變化、激烈且競爭的環境，可接受挑戰。", b:"我喜歡社交，也喜歡招待人。", c:"我喜歡成為小組的一份子，固守一般性程序。", d:"我會花很多時間去研究事與人。"},
+  { t:"13.",
+    a:"我喜歡按自己的方法做事，不在乎別人對我的觀感，只要成功。", b:"有人跟我意見不一致時，我會很難過。", c:"我知道改變有必要，但仍覺得少冒險較好。", d:"我對自己及他人的期望很高，符合高標準。"},
+  { t:"14.",
+    a:"我擅長處理棘手問題。", b:"我是很熱心的人，喜歡跟別人一起工作。", c:"我喜歡聽而不喜歡說，說話委婉溫和。", d:"處理事較不動感情，是就是，不把感情牽扯進來，也較少與人閒聊。"},
+  { t:"15.",
+    a:"我喜歡有競爭，才能完全發揮潛能。", b:"我較感性，與人相處或處事較不注意細節。", c:"我是理性的組員，順著群眾，具有高度團體意識。", d:"我喜歡研究，講求證據與保證。"},
+  { t:"16.",
+    a:"我喜歡能力與權威，這是我想要的。", b:"我有時情緒化，置身有趣事務中常無法掌握時間。", c:"我按部就班，穩紮穩打，較不喜歡破釜沉舟。", d:"我很注意事務與人的細節。"},
+  { t:"17.",
+    a:"我喜歡掌握及支配他人。", b:"在團體中我喜歡打成一片，活潑有氣氛。", c:"我遵守傳統步驟，不喜歡太大變化。", d:"未掌握事實與更多資料前，我寧可保持現狀。"},
+  { t:"18.",
+    a:"我溝通時直接了當，不喜歡兜圈子。", b:"我喜歡幫助人，相親相愛。", c:"我不喜歡多變化的環境，要穩定安全的生活方式。", d:"我要求準確無誤，講求高品質與高標準。"},
+  { t:"19.",
+    a:"我不喜歡別人逗我開心，不喜歡太多話的人。", b:"我喜歡參加團體活動，與很多人在一起感覺很好。", c:"對事情我沒有太多要求與意見，喜歡靜靜有耐心地做。", d:"我做事要有一套計劃的標準作業程序引導方向。"},
+  { t:"20.",
+    a:"我討厭別人告訴我事情該怎麼做，我自有定見。", b:"我生氣勃勃外向，能激起他人的熱心。", c:"我喜歡獨處，與人生活在一起時也儘量不打擾他人。", d:"話題有趣時，我會找更多資料，小心進行外交策略。"},
+  { t:"21. 在同事（同學）眼中您是：",
+    a:"積極、熱情、有行動力的人。", b:"活潑、開朗、風趣幽默的人。", c:"忠誠、隨和、容易相處的人。", d:"謹慎、冷靜、注意細節的人。"},
+  { t:"22. 您做決策的方式：",
+    a:"希望能立即有效。", b:"感覺重於一切。", c:"有時間考慮或尋求他人意見。", d:"要有詳細的資料評估。"},
+  { t:"23. 職務上最擅長的工作是：",
+    a:"以目標為導向，不服輸精神。", b:"良好口才，主動建立關係。", c:"能配合團隊，忠誠擁護者。", d:"流程掌握，注意細節。"},
+  { t:"24. 面對壓力時，您會：",
+    a:"用行動力面對並克服它。", b:"找人傾吐，獲得認同。", c:"逆來順受，儘量避免衝突。", d:"重新思考緣由，必要時做精細解說。"},
+  { t:"25. 與同事（同學）的相處：",
+    a:"以公事為主，少談個人生活。", b:"重視氣氛，能帶動團隊情趣。", c:"良好傾聽者，態度溫和友善。", d:"較被動，不主動建立關係。"},
+  { t:"26. 完成一件事最在意：",
+    a:"效果是否達到。", b:"過程是否快樂。", c:"前後是否有改變。", d:"流程是否正確。"},
+  { t:"27. 什麼會讓您恐懼：",
+    a:"呈現弱點，被人利用。", b:"失去認同，被人排擠。", c:"過度變動，無所適從。", d:"制度不清，標準不一。"},
+  { t:"28. 您自覺的缺點：",
+    a:"沒有耐心。", b:"欠缺細心。", c:"沒有主見。", d:"欠缺風趣。"}
+];
+
+/* ===== 內部映射（僅用於計算，不在畫面顯示） ===== */
+const letterToDISC = { A:'D', B:'I', C:'S', D:'C' };
+const dims = ['D','I','S','C'];
+
+function $(sel,root=document){ return root.querySelector(sel) }
+function $all(sel,root=document){ return Array.from(root.querySelectorAll(sel)) }
+
+/* ===== 分數轉換（依你提供的表） ===== */
+function scoreMost(dim, n){
+  if(dim==='D'){ if(n===0) return 1; if(n===1) return 2; if(n<=3) return 3; if(n<=5) return 4; if(n<=7) return 5; if(n<=10) return 6; return 7; }
+  if(dim==='I'){ if(n<=2) return 1; if(n===3) return 2; if(n<=5) return 3; if(n<=7) return 4; if(n===8) return 5; if(n<=10) return 6; return 7; }
+  if(dim==='S'){ if(n<=3) return 1; if(n===4) return 2; if(n<=6) return 3; if(n<=8) return 4; if(n<=10) return 5; if(n<=12) return 6; return 7; }
+  if(dim==='C'){ if(n<=2) return 1; if(n===3) return 2; if(n===4) return 3; if(n<=6) return 4; if(n===7) return 5; if(n<=10) return 6; return 7; }
+}
+function scoreLeast(dim, n){
+  if(dim==='D'){ if(n>=16) return 1; if(n>=14) return 2; if(n>=11) return 3; if(n===10) return 4; if(n>=8) return 5; if(n>=5) return 6; return 7; }
+  if(dim==='I'){ if(n>=9) return 1; if(n===8) return 2; if(n>=6) return 3; if(n===5) return 4; if(n===4) return 5; if(n===3) return 6; return 7; }
+  if(dim==='S'){ if(n>=9) return 1; if(n>=7) return 2; if(n>=5) return 3; if(n===4) return 4; if(n===3) return 5; if(n===2) return 6; return 7; }
+  if(dim==='C'){ if(n>=12) return 1; if(n>=10) return 2; if(n===9) return 3; if(n>=7) return 4; if(n===6) return 5; if(n>=4) return 6; return 7; }
+}
+function scoreDiff(dim, d){
+  if(dim==='D'){ if(d<=-15) return 1; if(d<=-12) return 2; if(d<=-8) return 3; if(d<=-5) return 4; if(d<=-1) return 5; if(d<=5) return 6; return 7; }
+  if(dim==='I'){ if(d<=-6) return 1; if(d<=-3) return 2; if(d<=0) return 3; if(d<=2) return 4; if(d<=5) return 5; if(d<=7) return 6; return 7; }
+  if(dim==='S'){ if(d<=-5) return 1; if(d<=-1) return 2; if(d<=2) return 3; if(d<=5) return 4; if(d<=8) return 5; if(d<=11) return 6; return 7; }
+  if(dim==='C'){ if(d<=-9) return 1; if(d<=-6) return 2; if(d<=-3) return 3; if(d<=-1) return 4; if(d<=2) return 5; if(d<=5) return 6; return 7; }
+}
+
+/* ===== 動態生成題目 ===== */
+const qRoot = $('#questions');
+questions.forEach((q, idx)=>{
+  const el = document.createElement('div');
+  el.className = 'q';
+  el.dataset.q = idx+1;
+  el.innerHTML = `
+    <div class="qhead">
+      <div class="qidx">Q${idx+1}</div>
+      <div class="qtext">${q.t}</div>
+    </div>
+    <div class="choices">
+      <div class="col most">
+        <div class="group-title">最像（請選 1 個）</div>
+        <div class="opts">
+          ${['a','b','c','d'].map((k,i)=>`
+            <label class="opt" data-type="most" data-letter="${'ABCD'[i]}">
+              <input type="radio" name="most-${idx}" value="${'ABCD'[i]}">
+              <span class="badge">${'ABCD'[i]}</span>
+              <span class="txt">${q[k]}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+      <div class="col least">
+        <div class="group-title">最不像（請選 1 個）</div>
+        <div class="opts">
+          ${['a','b','c','d'].map((k,i)=>`
+            <label class="opt" data-type="least" data-letter="${'ABCD'[i]}">
+              <input type="radio" name="least-${idx}" value="${'ABCD'[i]}">
+              <span class="badge">${'ABCD'[i]}</span>
+              <span class="txt">${q[k]}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  qRoot.appendChild(el);
+});
+
+/* ===== 禁止同題同選（互斥）＋ 選取樣式 ===== */
+function isAnswered(card){
+  const i = Number(card.dataset.q)-1;
+  const m = card.querySelector(`input[name="most-${i}"]:checked`);
+  const l = card.querySelector(`input[name="least-${i}"]:checked`);
+  return !!(m && l);
+}
+
+function enforceExclusion(card){
+  const i = Number(card.dataset.q)-1;
+  const mSel = card.querySelector(`input[name="most-${i}"]:checked`);
+  const lSel = card.querySelector(`input[name="least-${i}"]:checked`);
+
+  // 先清掉全部 disable 標記
+  card.querySelectorAll('.opt').forEach(o=>{
+    const input = o.querySelector('input');
+    input.disabled = false;
+    o.classList.remove('disabled');
+    o.removeAttribute('title');
+  });
+
+  // 若最像選了 X，則最不像的 X 不能選
+  if(mSel){
+    const letter = mSel.value;
+    const tar = card.querySelector(`.col.least .opt[data-letter="${letter}"]`);
+    if(tar){
+      const tinp = tar.querySelector('input');
+      if(tinp.checked){ tinp.checked=false; tar.classList.remove('selected'); }
+      tinp.disabled = true;
+      tar.classList.add('disabled');
+      tar.title = '已在「最像」選過，不能同時選為「最不像」';
+    }
+  }
+  // 若最不像選了 Y，則最像的 Y 不能選
+  if(lSel){
+    const letter = lSel.value;
+    const tar = card.querySelector(`.col.most .opt[data-letter="${letter}"]`);
+    if(tar){
+      const tinp = tar.querySelector('input');
+      if(tinp.checked){ tinp.checked=false; tar.classList.remove('selected'); }
+      tinp.disabled = true;
+      tar.classList.add('disabled');
+      tar.title = '已在「最不像」選過，不能同時選為「最像」';
+    }
+  }
+}
+
+qRoot.addEventListener('change', (e)=>{
+  const inp = e.target;
+  if(inp && inp.type==='radio'){
+    const col = inp.closest('.col');
+    // 切換選取樣式
+    col.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected'));
+    inp.closest('.opt').classList.add('selected');
+
+    const card = inp.closest('.q');
+    enforceExclusion(card);
+
+    if( isAnswered(card) ){ card.classList.remove('missing'); }
+    updateProgress();
+  }
+});
+
+/* 進度 */
+function updateProgress(){
+  const total = questions.length;
+  let done = 0;
+  document.querySelectorAll('.q').forEach(card=>{ if(isAnswered(card)) done++; });
+  document.getElementById('progress').textContent = `進度：${done} / ${total} 題（最像 & 最不像都選）`;
+}
+updateProgress();
+
+// 初始跑一次（確保狀態乾淨）
+document.querySelectorAll('.q').forEach(enforceExclusion);
+
+/* ===== 計算結果 & 驗證未答 ===== */
+let chartMost, chartLeast, chartDiff;
+
+function compute(){
+  const cards = Array.from(document.querySelectorAll('.q'));
+  let firstMissing = null;
+  cards.forEach(card=>{
+    if(!isAnswered(card)){
+      card.classList.add('missing');
+      if(!firstMissing) firstMissing = card;
+    }else{
+      card.classList.remove('missing');
+    }
+  });
+  if(firstMissing){
+    firstMissing.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
+
+  const mc = {D:0,I:0,S:0,C:0};
+  const lc = {D:0,I:0,S:0,C:0};
+  cards.forEach((card, idx)=>{
+    const m = card.querySelector(`input[name="most-${idx}"]:checked`).value;   // 'A' | 'B' | ...
+    const l = card.querySelector(`input[name="least-${idx}"]:checked`).value;
+    mc[letterToDISC[m]]++;
+    lc[letterToDISC[l]]++;
+  });
+  const df = {D: mc.D-lc.D, I: mc.I-lc.I, S: mc.S-lc.S, C: mc.C-lc.C};
+
+  const ms = Object.fromEntries(dims.map(d=>[d, scoreMost(d, mc[d])]));
+  const ls = Object.fromEntries(dims.map(d=>[d, scoreLeast(d, lc[d])]));
+  const ds = Object.fromEntries(dims.map(d=>[d, scoreDiff(d, df[d])]));
+
+  drawAll(ms, ls, ds, mc, lc, df);
+
+  // 顯示結果區塊並捲動至底部
+  const results = document.getElementById('results');
+  results.classList.remove('hidden');
+  results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function drawAll(ms, ls, ds, mc, lc, df){
+  const labels = ['D','I','S','C'];
+  const mostArr  = labels.map(k=>ms[k]);
+  const leastArr = labels.map(k=>ls[k]);
+  const diffArr  = labels.map(k=>ds[k]);
+  const cfg = (data) => ({
+    type:'line',
+    data:{ labels, datasets:[{ label:'分數', data, tension:.35, fill:false, pointRadius:5 }]},
+    options:{ responsive:true, scales:{ y:{ suggestedMin:1, suggestedMax:7, ticks:{stepSize:1} } } }
+  });
+  [chartMost, chartLeast, chartDiff].forEach(ch=>{ if(ch){ ch.destroy(); }});
+  chartMost  = new Chart(document.getElementById('chartMost'),  cfg(mostArr));
+  chartLeast = new Chart(document.getElementById('chartLeast'), cfg(leastArr));
+  chartDiff  = new Chart(document.getElementById('chartDiff'),  cfg(diffArr));
+
+  document.getElementById('mostKpi').innerHTML  = dims.map(d=>`<span class="pill">${d} 最像：<strong>${ms[d]}</strong></span>`).join('');
+  document.getElementById('leastKpi').innerHTML = dims.map(d=>`<span class="pill">${d} 最不像：<strong>${ls[d]}</strong></span>`).join('');
+  document.getElementById('diffKpi').innerHTML  = dims.map(d=>`<span class="pill">${d} 相減：<strong>${ds[d]}</strong></span>`).join('');
+
+  renderTable('#mostTable',  '最像（M）', mc, ms);
+  renderTable('#leastTable', '最不像（L）', lc, ls);
+  renderTable('#diffTable',  '相減（M−L）', df, ds, true);
+}
+
+function renderTable(sel, title, counts, scores, isDiff=false){
+  const head = `<tr><th>指標</th><th>D</th><th>I</th><th>S</th><th>C</th></tr>`;
+  const row1 = `<tr><td>${isDiff?'差值（次數）':'作答數（次數）'}</td><td>${counts.D}</td><td>${counts.I}</td><td>${counts.S}</td><td>${counts.C}</td></tr>`;
+  const row2 = `<tr><td>${title} 分數（1～7）</td><td>${scores.D}</td><td>${scores.I}</td><td>${scores.S}</td><td>${scores.C}</td></tr>`;
+  document.querySelector(sel).innerHTML = head + row1 + row2;
+}
+
+/* 控制鈕 */
+document.getElementById('calc').addEventListener('click', compute);
+document.getElementById('reset').addEventListener('click', ()=>{
+  document.querySelectorAll('input[type="radio"]').forEach(i=>{ i.checked=false; i.disabled=false; });
+  document.querySelectorAll('.opt').forEach(o=>o.classList.remove('selected','disabled'));
+  document.querySelectorAll('.q').forEach(q=>q.classList.remove('missing'));
+  updateProgress();
+  [chartMost, chartLeast, chartDiff].forEach(ch=>{ if(ch){ ch.destroy(); }});
+  ['#mostKpi','#leastKpi','#diffKpi','#mostTable','#leastTable','#diffTable'].forEach(id=>document.querySelector(id).innerHTML='');
+  document.getElementById('results').classList.add('hidden');
+  // 重新套用互斥規則
+  document.querySelectorAll('.q').forEach(enforceExclusion);
+});
+document.getElementById('scrollFirstMissing').addEventListener('click', ()=>{
+  const miss = Array.from(document.querySelectorAll('.q')).find(el=>!isAnswered(el));
+  if(miss) miss.scrollIntoView({behavior:'smooth',block:'center'});
+});
+
+/* 初始：避免手機點擊延遲 */
+document.addEventListener('touchstart', ()=>{}, {passive:true});
+</script>
+</body>
+</html>
