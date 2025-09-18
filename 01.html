@@ -114,7 +114,7 @@ button{cursor:pointer}
 </head>
 <body>
 <div class="app">
-  <div class="header"><h1 id="eventTitle">2025 活動抽獎</h1></div>
+  <div class="header"><h1 id="eventTitle">2025 理膚展銷抽獎</h1></div>
 
   <div class="stage">
     <div class="machine" id="machine">
@@ -608,7 +608,7 @@ async function autoLoadFromGitHubOnOpen(){
     const out = await loadPrizesFromGitHub({ owner, repo, path: sourcePath, branch: sourceBranch, token: sourceToken });
     if(Array.isArray(out) && out.length){
       prizes = out; buildReel(); renderPrizeTable();
-      document.getElementById('centerText').textContent = '已自動載入 GitHub 獎項';
+      document.getElementById('centerText').textContent = '開始抽獎';
       toast(`已載入 ${out.length} 個獎項（GitHub）`);
       return;
     }
