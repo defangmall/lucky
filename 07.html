@@ -156,7 +156,7 @@ button{cursor:pointer}
           <span class="badge">GitHub 同步（CSV）</span>
           <input id="ghRepo" value="defangmall/lucky" style="min-width:260px"/>
           <input id="ghBranch" placeholder="main" style="width:110px"/>
-          <input id="ghPath" placeholder="data/prizes01.csv" style="min-width:200px"/>
+          <input id="ghPath" placeholder="data/prizes07.csv" style="min-width:200px"/>
           <input id="ghToken" type="password" placeholder="GitHub Token（公有 repo 載入可留空，推送必填）" style="min-width:260px"/>
         </div>
         <div class="row">
@@ -348,7 +348,7 @@ tr.innerHTML = `
 const GH_DEFAULTS = {
   repo:  "defangmall/lucky",   // ← 改成你的 owner/repo
   branch:"main",                    // ← 預設分支
-  path:  "data/prizes01.csv",         // ← CSV 路徑
+  path:  "data/prizes07.csv",         // ← CSV 路徑
   token: ""                         // 私有 repo 才需要；前端不建議硬編
 };
 
@@ -543,7 +543,7 @@ async function pushPrizesToGitHub({owner, repo, path, branch='main', token}){
   const contentB64 = toBase64UTF8(contentStr);
   const sha = await getGitHubFileSHA({owner, repo, path, branch, token}).catch(()=>null);
   const url  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-  const body = { message: `chore: update prizes01.csv (${new Date().toISOString()})`, content: contentB64, branch };
+  const body = { message: `chore: update prizes07.csv (${new Date().toISOString()})`, content: contentB64, branch };
   if (sha) body.sha = sha;
   const res = await fetch(url, {
     method:'PUT',
@@ -597,7 +597,7 @@ async function loadPrizesFromGitHub({owner, repo, path, branch='main', token}) {
 async function autoLoadFromGitHubOnOpen(){
   const sourceRepo   = GH_DEFAULTS.repo;
   const sourceBranch = GH_DEFAULTS.branch || 'main';
-  const sourcePath   = GH_DEFAULTS.path   || 'data/prizes01.csv';
+  const sourcePath   = GH_DEFAULTS.path   || 'data/prizes07.csv';
   const sourceToken  = GH_DEFAULTS.token  || "";
 
   if(!sourceRepo) return;
@@ -642,7 +642,7 @@ async function autoLoadFromGitHubOnOpen(){
 document.getElementById('loadFromGitHub')?.addEventListener('click', async ()=>{
   const repoFull = document.getElementById('ghRepo')?.value.trim();
   const branch   = document.getElementById('ghBranch')?.value.trim() || 'main';
-  const path     = document.getElementById('ghPath')?.value.trim() || 'data/prizes01.csv';
+  const path     = document.getElementById('ghPath')?.value.trim() || 'data/prizes07.csv';
   const token    = document.getElementById('ghToken')?.value.trim();
   if(!repoFull){ toast('請填 owner/repo'); return; }
   const [owner, repo] = repoFull.split('/');
